@@ -54,9 +54,10 @@ def load_data():
         return df, "✅ Loaded local data/vivno_dataset.csv"
 
     # Otherwise load from GitHub raw URL
-    github_url = "https://raw.githubusercontent.com/baheldeepti/wine-insights-15min/main/vivno_dataset.csv"
+    github_url = "github_url = "https://raw.githubusercontent.com/baheldeepti/wine-insights-15min/main/vivno_dataset.csv"
     try:
-        df = pd.read_csv(github_url, encoding="utf-8", on_bad_lines="skip")
+        df = pd.read_csv(github_url, encoding="latin1", on_bad_lines="skip")
+
         return df, "✅ Loaded data from GitHub repository"
     except Exception as e:
         return None, f"❌ Error loading data: {e}"
