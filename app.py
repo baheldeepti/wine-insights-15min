@@ -97,7 +97,7 @@ country_col  = map_column(df, ["Countrys", "country", "country_name", "region"])
 color_col    = map_column(df, ["color_wine", "color", "wine_color"])
 abv_col      = map_column(df, ["ABV %", "abv", "alcohol", "alcohol_percent"])
 name_col     = map_column(df, ["Names", "name", "title"])
-variety_col  = map_column(df, ["Variety", "variety", "grape", "grapes", "wine_variety"])  # NEW
+#variety_col  = map_column(df, ["Variety", "variety", "grape", "grapes", "wine_variety"])  # NEW
 
 # Unified field we’ll use throughout for variety/grape:
 variety_field = variety_col if variety_col else ("__variety__" if "__variety__" in df.columns else None)
@@ -129,6 +129,9 @@ df["__variety__"] = (
     df[country_col].astype(str).str.extract(r"^(.*?)\s+from\s", expand=False)
     if country_col else np.nan
 )
+# Unified field we’ll use throughout for variety/grape (prefer real column; else parsed)
+variety_field = variety_col if variety_col else "__variety__"
+
 
 # Year: extract 4-digit year from Names if present
 if name_col:
@@ -142,18 +145,18 @@ else:
 
 # Sidebar filters
 st.sidebar.header("Filters")
-# Country filter
-if country_col:
-    countries = (
-        df[country_col].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique()
-        .tolist()
+# Region/State filter (use short label we derived)
+if "__location_last__" in df.columns:
+    regions = (
+        df["__location_last__"].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique().tolist()
     )
-    countries = sorted(countries)
-    sel_countries = st.sidebar.multiselect(
-        "Country", options=countries, default=countries[: min(5, len(countries))]
+    regions = sorted(regions)
+    sel_countries = st.sidebar.multiselect(  # keep variable name to minimize downstream edits
+        "Region / State", options=regions, default=regions[: min(5, len(regions))]
     )
 else:
     sel_countries = []
+
 
 # Variety filter (prefer actual column; fallback to parsed __variety__)
 if variety_field:
@@ -179,8 +182,9 @@ else:
 # Apply filters
 filt = pd.Series(True, index=df.index)
 
-if country_col and sel_countries:
-    filt &= df[country_col].astype(str).isin(sel_countries)
+if "__location_last__" in df.columns and sel_countries:
+    filt &= df["__location_last__"].astype(str).isin(sel_countries)
+
 
 if variety_field and sel_varieties:
     filt &= df[variety_field].astype(str).isin(sel_varieties)
