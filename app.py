@@ -495,6 +495,7 @@ else:
 st.subheader("Price Distribution (USD)")
 if price_col and df_filtered[price_col].notna().any():
     fig_price = plt.figure(figsize=(8, 3.8))
+    plt.hist(df_filtered[price_col].dropna(), bins=30)
     counts, bins, patches = plt.hist(df_filtered[price_col].dropna(), bins=30)
     for count, bin_ in zip(counts, bins[:-1]):
         plt.text(bin_, count, str(int(count)), ha='left', va='bottom', fontsize=8)
@@ -528,6 +529,7 @@ if not series_var.empty:
     )
     if not top_varieties.empty:
         fig_var = plt.figure(figsize=(8, 4.5))
+        top_varieties.plot(kind="barh")
         ax = top_varieties.plot(kind="barh")
         plt.xlabel("Count")
         plt.ylabel("Variety")
