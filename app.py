@@ -459,7 +459,9 @@ if "__location_last__" in df_filtered.columns:
         plt.xlabel("Count")
         plt.ylabel("Location")
         plt.tight_layout()
-        st.pyplot(fig_loc)
+        for i, v in enumerate(top_locations):
+          ax.text(v + 1, i, str(v), va='center', fontsize=9)
+          st.pyplot(fig_loc)
     else:
         st.info("No location data after filters.")
 else:
@@ -477,10 +479,12 @@ if rating_col and df_filtered["__year__"].notna().any():
     if not rating_by_year.empty:
         fig_year = plt.figure(figsize=(8, 3.8))
         plt.plot(rating_by_year.index, rating_by_year[rating_col], marker="o")
+        for x, y in zip(rating_by_year.index, rating_by_year[rating_col]):
+            plt.text(x, y, f"{y:.2f}", ha='center', va='bottom', fontsize=9)
         plt.xlabel("Year")
         plt.ylabel("Average Rating")
         plt.tight_layout()
-        st.pyplot(fig_year)
+
     else:
         st.info("No year/rating data after filters.")
 else:
@@ -491,11 +495,13 @@ else:
 st.subheader("Price Distribution (USD)")
 if price_col and df_filtered[price_col].notna().any():
     fig_price = plt.figure(figsize=(8, 3.8))
-    plt.hist(df_filtered[price_col].dropna(), bins=30)
+    counts, bins, patches = plt.hist(df_filtered[price_col].dropna(), bins=30)
+    for count, bin_ in zip(counts, bins[:-1]):
+        plt.text(bin_, count, str(int(count)), ha='left', va='bottom', fontsize=8)
     plt.xlabel("Price")
     plt.ylabel("Frequency")
     plt.tight_layout()
-    st.pyplot(fig_price)
+
 else:
     st.info("Price data not available to plot a distribution.")
 
@@ -522,11 +528,13 @@ if not series_var.empty:
     )
     if not top_varieties.empty:
         fig_var = plt.figure(figsize=(8, 4.5))
-        top_varieties.plot(kind="barh")
+        ax = top_varieties.plot(kind="barh")
         plt.xlabel("Count")
         plt.ylabel("Variety")
+        for i, v in enumerate(top_varieties):
+            ax.text(v + 1, i, str(v), va='center', fontsize=9)
         plt.tight_layout()
-        st.pyplot(fig_var)
+
     else:
         st.info("No variety data after filters.")
 else:
