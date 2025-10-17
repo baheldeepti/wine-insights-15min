@@ -50,32 +50,31 @@ def load_data():
     # Try local path first
     local_path = "data/vivno_dataset.csv"
     if os.path.exists(local_path):
-        df = pd.read_csv(local_path, encoding="utf-8", on_bad_lines="skip")
+        df = pd.read_csv(local_path, encoding="utf-16", on_bad_lines="skip")
         return df, "✅ Loaded local data/vivno_dataset.csv"
 
-    # Otherwise load from GitHub raw URL
+    # Otherwise load from GitHub raw URL (repo root)
     github_url = "https://raw.githubusercontent.com/baheldeepti/wine-insights-15min/main/vivno_dataset.csv"
     try:
-        df = pd.read_csv(github_url, encoding="latin1", on_bad_lines="skip")
-
+        df = pd.read_csv(github_url, encoding="utf-16", on_bad_lines="skip")
         return df, "✅ Loaded data from GitHub repository"
-    except Exception as e:
-        return None, f"❌ Error loading data: {e}"
-  
+    except Exception:
+        pass
 
     # fallback: KaggleHub
     kb = try_kagglehub_download()
     if kb and os.path.exists(kb):
-        df = pd.read_csv(kb, encoding="utf-8", on_bad_lines="skip")
+        df = pd.read_csv(kb, encoding="utf-16", on_bad_lines="skip")
         return df, f"Loaded via KaggleHub: {kb}"
 
-    # last resort: try a mounted path (e.g., teaching env)
+    # last resort: teaching env
     mounted = "/mnt/data/vivno_dataset.csv"
     if os.path.exists(mounted):
-        df = pd.read_csv(mounted, encoding="utf-8", on_bad_lines="skip")
+        df = pd.read_csv(mounted, encoding="utf-16", on_bad_lines="skip")
         return df, "Loaded /mnt/data/vivno_dataset.csv"
 
     return None, "No CSV found locally; and KaggleHub fallback failed."
+
 
 # --------- App ---------
 st.set_page_config(page_title="Wine Insights (15-min Sprint)", layout="wide")
@@ -88,27 +87,51 @@ if df is None or df.empty:
     st.error("Could not load any data. Please place your CSV at **data/vivno_dataset.csv**.")
     st.stop()
 
-# Map likely columns
-price_col   = map_column(df, ["price", "wine_price", "price_usd"])
-rating_col  = map_column(df, ["rating", "ratings", "points", "average_rating"])
-country_col = map_column(df, ["country", "country_name"])
-variety_col = map_column(df, ["variety", "grape", "grapes", "wine_variety"])
-year_col    = map_column(df, ["year", "vintage"])
+# Map likely columns (dataset-specific names included)
+price_col    = map_column(df, ["Prices", "price", "wine_price", "price_usd"])
+rating_col   = map_column(df, ["Ratings", "rating", "points", "average_rating"])
+ratings_ncol = map_column(df, ["Ratingsnum", "ratings_count", "n_ratings"])
+country_col  = map_column(df, ["Countrys", "country", "country_name", "region"])
+color_col    = map_column(df, ["color_wine", "color", "wine_color"])
+abv_col      = map_column(df, ["ABV %", "abv", "alcohol", "alcohol_percent"])
+name_col     = map_column(df, ["Names", "name", "title"])
 
-# Coerce numerics if present
+# Coerce numerics
 if price_col:
     df[price_col] = coerce_numeric(df[price_col])
 if rating_col:
-    df[rating_col] = coerce_numeric(df[rating_col])
+    df[rating_col] = pd.to_numeric(df[rating_col], errors="coerce")
+if ratings_ncol:
+    df[ratings_ncol] = pd.to_numeric(df[ratings_ncol], errors="coerce")
+if abv_col:
+    df[abv_col] = pd.to_numeric(df[abv_col], errors="coerce")
 
-# Try to normalize year from vintage if needed (e.g., "2018", "NV")
-if year_col:
+# Derive a clean location from 'Countrys' like "Chardonnay from Sonoma County, California"
+# 1) extract the part after 'from ' ; fall back to original text
+df["__location__"] = (
+    df[country_col].astype(str).str.extract(r"from\s+(.*)", expand=False)
+    if country_col else pd.Series(np.nan, index=df.index)
+)
+if country_col:
+    df["__location__"] = df["__location__"].fillna(df[country_col].astype(str))
+# 2) keep the LAST token after comma as a short location label (e.g., "California")
+df["__location_last__"] = df["__location__"].astype(str).str.split(",").str[-1].str.strip()
+
+# Derive a simple grape/variety from 'Countrys' (text before " from ")
+df["__variety__"] = (
+    df[country_col].astype(str).str.extract(r"^(.*?)\s+from\s", expand=False)
+    if country_col else np.nan
+)
+
+# Year: extract 4-digit year from Names if present
+if name_col:
     df["__year__"] = pd.to_numeric(
-        df[year_col].astype(str).str.extract(r"(\d{4})", expand=False),
+        df[name_col].astype(str).str.extract(r"(\d{4})", expand=False),
         errors="coerce",
     )
 else:
     df["__year__"] = np.nan
+
 
 # Sidebar filters
 st.sidebar.header("Filters")
@@ -175,37 +198,38 @@ with col3:
     else:
         st.metric("Median Price", "—")
 with col4:
-    if country_col:
-        st.metric("Countries", df_f[country_col].nunique())
+    # Prefer ABV if present; else show unique short locations
+    if abv_col and df_f[abv_col].notna().any():
+        st.metric("Avg ABV", f"{df_f[abv_col].mean():.1f}%")
+    elif "__location_last__" in df_f.columns:
+        st.metric("Locations", df_f["__location_last__"].nunique())
     else:
-        st.metric("Countries", "—")
+        st.metric("Locations", "—")
+
 
 st.divider()
 
 # Charts (matplotlib for minimal deps)
-import matplotlib.pyplot as plt
-
-# 1) Top countries by count
-st.subheader("Top Countries by Number of Wines")
-if country_col:
-    top_cty = (
-        df_f[country_col].dropna()
-        .astype(str)
-        .value_counts()
-        .head(10)
-        .sort_values(ascending=True)
+# 1) Top locations by number of wines (short label)
+st.subheader("Top Locations by Number of Wines")
+if "__location_last__" in df_f.columns:
+    top_loc = (
+        df_f["__location_last__"].dropna()
+        .astype(str).str.strip().replace("", np.nan).dropna()
+        .value_counts().head(10).sort_values(ascending=True)
     )
-    if not top_cty.empty:
+    if not top_loc.empty:
         fig = plt.figure(figsize=(8, 5))
-        top_cty.plot(kind="barh")
+        top_loc.plot(kind="barh")
         plt.xlabel("Count")
-        plt.ylabel("Country")
+        plt.ylabel("Location")
         plt.tight_layout()
         st.pyplot(fig)
     else:
-        st.info("No country data after filters.")
+        st.info("No location data after filters.")
 else:
-    st.info("Country column not found in dataset.")
+    st.info("Location field not available in dataset.")
+
 
 # 2) Average rating by year (line)
 st.subheader("Average Rating by Year")
@@ -234,6 +258,27 @@ if price_col and df_f[price_col].notna().any():
     st.pyplot(fig3)
 else:
     st.info("Price data not available to plot a distribution.")
+
+# 4) Top grape/variety from parsed text
+st.subheader("Top Varieties")
+if "__variety__" in df_f.columns:
+    top_var = (
+        df_f["__variety__"].dropna()
+        .astype(str).str.strip().replace("", np.nan).dropna()
+        .value_counts().head(10).sort_values(ascending=True)
+    )
+    if not top_var.empty:
+        fig4 = plt.figure(figsize=(8, 5))
+        top_var.plot(kind="barh")
+        plt.xlabel("Count")
+        plt.ylabel("Variety")
+        plt.tight_layout()
+        st.pyplot(fig4)
+    else:
+        st.info("No variety data after filters.")
+else:
+    st.info("Variety field not available.")
+
 
 st.divider()
 st.caption("Tip: refine filters in the sidebar. Keep it simple, sip the insights. 🥂")
