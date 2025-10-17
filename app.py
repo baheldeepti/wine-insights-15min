@@ -1,3 +1,6 @@
+# app.py — Wine Insights (top filters demo)
+# Python 3.11
+
 import os
 import pathlib
 import pandas as pd
@@ -5,91 +8,88 @@ import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
 
+# ----------------------------
+# 0) Streamlit Page Settings
+# ----------------------------
+st.set_page_config(page_title="Wine Insights — quick dashboard", layout="wide")
 
-# Optional: KaggleHub fallback
+# ----------------------------
+# 1) Data Loading (UTF-16)
+# ----------------------------
 def try_kagglehub_download():
+    """Fallback: fetches dataset from Kaggle if local / GitHub not found."""
     try:
         import kagglehub
         path = kagglehub.dataset_download("salohiddindev/wine-dataset-scraping-from-wine-com")
-        # Try to find a likely csv file
-        candidates = [
+        # Try likely names; else pick any CSV in the folder
+        for name in [
             "vivno_dataset.csv", "vivno_data.csv", "vivino_dataset.csv", "vivno_dataset (1).csv"
-        ]
-        for c in candidates:
-            f = pathlib.Path(path) / c
-            if f.exists():
-                return str(f)
-        # If not found by name, pick any CSV in the folder
-        for f in pathlib.Path(path).glob("*.csv"):
-            return str(f)
+        ]:
+            p = pathlib.Path(path) / name
+            if p.exists():
+                return str(p)
+        any_csvs = list(pathlib.Path(path).glob("*.csv"))
+        return str(any_csvs[0]) if any_csvs else None
     except Exception:
         return None
-    return None
 
-# --------- Helpers: robust column mapping ----------
-def map_column(df, options):
-    """Return the first matching column (case-insensitive) from options, else None."""
-    lower_cols = {c.lower(): c for c in df.columns}
-    for opt in options:
-        if opt.lower() in lower_cols:
-            return lower_cols[opt.lower()]
-    return None
-
-def coerce_numeric(s):
-    """Convert strings like '$12.99', '12,99', '95 points' to numeric if possible."""
-    if s.dtype.kind in "biufc":
-        return pd.to_numeric(s, errors="coerce")
-    # strip currency and words
-    cleaned = (
-        s.astype(str)
-         .str.replace(r"[^0-9\.\-]", "", regex=True)
-         .replace({"": np.nan, ".": np.nan, "-": np.nan})
-    )
-    return pd.to_numeric(cleaned, errors="coerce")
-
-# --------- Load data ----------
 def load_data():
-    # Try local path first
+    """Load CSV with graceful fallbacks. This dataset is UTF-16."""
+    # 1) Local repo path
     local_path = "data/vivno_dataset.csv"
     if os.path.exists(local_path):
-        df = pd.read_csv(local_path, encoding="utf-16", on_bad_lines="skip")
-        return df, "✅ Loaded local data/vivno_dataset.csv"
+        return pd.read_csv(local_path, encoding="utf-16", on_bad_lines="skip"), "✅ Loaded local data/vivno_dataset.csv"
 
-    # Otherwise load from GitHub raw URL (repo root)
-    github_url = "https://raw.githubusercontent.com/baheldeepti/wine-insights-15min/main/vivno_dataset.csv"
+    # 2) GitHub raw (repo root, as in your project)
+    gh_url = "https://raw.githubusercontent.com/baheldeepti/wine-insights-15min/main/vivno_dataset.csv"
     try:
-        df = pd.read_csv(github_url, encoding="utf-16", on_bad_lines="skip")
+        df = pd.read_csv(gh_url, encoding="utf-16", on_bad_lines="skip")
         return df, "✅ Loaded data from GitHub repository"
     except Exception:
         pass
 
-    # fallback: KaggleHub
+    # 3) KaggleHub
     kb = try_kagglehub_download()
     if kb and os.path.exists(kb):
-        df = pd.read_csv(kb, encoding="utf-16", on_bad_lines="skip")
-        return df, f"Loaded via KaggleHub: {kb}"
+        return pd.read_csv(kb, encoding="utf-16", on_bad_lines="skip"), f"Loaded via KaggleHub: {kb}"
 
-    # last resort: teaching env
+    # 4) Teaching env mount
     mounted = "/mnt/data/vivno_dataset.csv"
     if os.path.exists(mounted):
-        df = pd.read_csv(mounted, encoding="utf-16", on_bad_lines="skip")
-        return df, "Loaded /mnt/data/vivno_dataset.csv"
+        return pd.read_csv(mounted, encoding="utf-16", on_bad_lines="skip"), "Loaded /mnt/data/vivno_dataset.csv"
 
-    return None, "No CSV found locally; and KaggleHub fallback failed."
-
-
-# --------- App ---------
-st.set_page_config(page_title="Wine Insights (15-min Sprint)", layout="wide")
-st.title("🍷 Wine Insights — quick dashboard")
+    return None, "❌ No CSV found (local/GitHub/Kaggle)."
 
 df, load_msg = load_data()
+
+st.title("🍷 Wine Insights — quick dashboard")
 st.caption(load_msg)
 
 if df is None or df.empty:
-    st.error("Could not load any data. Please place your CSV at **data/vivno_dataset.csv**.")
+    st.error("Could not load any data. Please put your CSV at **data/vivno_dataset.csv**.")
     st.stop()
 
-# Map likely columns (dataset-specific names included)
+# ----------------------------
+# 2) Column mapping & parsing
+# ----------------------------
+def map_column(df, options):
+    lower = {c.lower(): c for c in df.columns}
+    for opt in options:
+        if opt.lower() in lower:
+            return lower[opt.lower()]
+    return None
+
+def coerce_numeric(s):
+    if s.dtype.kind in "biufc":
+        return pd.to_numeric(s, errors="coerce")
+    cleaned = (
+        s.astype(str)
+         .str.replace(r"[^0-9.\-]", "", regex=True)
+         .replace({"": np.nan, ".": np.nan, "-": np.nan})
+    )
+    return pd.to_numeric(cleaned, errors="coerce")
+
+# Map dataset-specific names
 price_col    = map_column(df, ["Prices", "price", "wine_price", "price_usd"])
 rating_col   = map_column(df, ["Ratings", "rating", "points", "average_rating"])
 ratings_ncol = map_column(df, ["Ratingsnum", "ratings_count", "n_ratings"])
@@ -97,40 +97,31 @@ country_col  = map_column(df, ["Countrys", "country", "country_name", "region"])
 color_col    = map_column(df, ["color_wine", "color", "wine_color"])
 abv_col      = map_column(df, ["ABV %", "abv", "alcohol", "alcohol_percent"])
 name_col     = map_column(df, ["Names", "name", "title"])
-variety_col  = map_column(df, ["Variety", "variety", "grape", "grapes", "wine_variety"])  # NEW
+variety_col  = map_column(df, ["Variety", "variety", "grape", "grapes", "wine_variety"])
 
+# Coerce numeric fields
+if price_col:    df[price_col] = coerce_numeric(df[price_col])
+if rating_col:   df[rating_col] = pd.to_numeric(df[rating_col], errors="coerce")
+if ratings_ncol: df[ratings_ncol] = pd.to_numeric(df[ratings_ncol], errors="coerce")
+if abv_col:      df[abv_col] = pd.to_numeric(df[abv_col], errors="coerce")
 
-# Coerce numerics
-if price_col:
-    df[price_col] = coerce_numeric(df[price_col])
-if rating_col:
-    df[rating_col] = pd.to_numeric(df[rating_col], errors="coerce")
-if ratings_ncol:
-    df[ratings_ncol] = pd.to_numeric(df[ratings_ncol], errors="coerce")
-if abv_col:
-    df[abv_col] = pd.to_numeric(df[abv_col], errors="coerce")
-
-# Derive a clean location from 'Countrys' like "Chardonnay from Sonoma County, California"
-# 1) extract the part after 'from ' ; fall back to original text
-df["__location__"] = (
-    df[country_col].astype(str).str.extract(r"from\s+(.*)", expand=False)
-    if country_col else pd.Series(np.nan, index=df.index)
-)
+# Parse short location and variety from "Countrys" like "Chardonnay from Sonoma County, California"
 if country_col:
+    # part after "from "
+    df["__location__"] = df[country_col].astype(str).str.extract(r"from\s+(.*)", expand=False)
     df["__location__"] = df["__location__"].fillna(df[country_col].astype(str))
-# 2) keep the LAST token after comma as a short location label (e.g., "California")
-df["__location_last__"] = df["__location__"].astype(str).str.split(",").str[-1].str.strip()
+    # last token after comma (e.g., "California")
+    df["__location_last__"] = df["__location__"].astype(str).str.split(",").str[-1].str.strip()
+    # simple variety from text before " from "
+    df["__variety__"] = df[country_col].astype(str).str.extract(r"^(.*?)\s+from\s", expand=False)
+else:
+    df["__location_last__"] = np.nan
+    df["__variety__"] = np.nan
 
-# Derive a simple grape/variety from 'Countrys' (text before " from ")
-df["__variety__"] = (
-    df[country_col].astype(str).str.extract(r"^(.*?)\s+from\s", expand=False)
-    if country_col else np.nan
-)
-# Unified field we’ll use throughout for variety/grape (prefer real column; else parsed)
+# Prefer a real variety column; else use parsed one
 variety_field = variety_col if variety_col else "__variety__"
 
-
-# Year: extract 4-digit year from Names if present
+# Year from Names/title (if present)
 if name_col:
     df["__year__"] = pd.to_numeric(
         df[name_col].astype(str).str.extract(r"(\d{4})", expand=False),
@@ -139,74 +130,95 @@ if name_col:
 else:
     df["__year__"] = np.nan
 
+# ----------------------------
+# 3) Filters — ON TOP
+# ----------------------------
+st.markdown("### Filters")
 
-# Sidebar filters
-st.sidebar.header("Filters")
-# Region/State filter (use short label we derived)
-if "__location_last__" in df.columns:
-    regions = (
-        df["__location_last__"].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique().tolist()
-    )
-    regions = sorted(regions)
-    sel_countries = st.sidebar.multiselect(  # keep variable name to minimize downstream edits
-        "Region / State", options=regions, default=regions[: min(5, len(regions))]
-    )
-else:
-    sel_countries = []
+# Build the lists safely
+regions = (
+    df["__location_last__"].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique().tolist()
+    if "__location_last__" in df.columns else []
+)
+regions = sorted(set(regions))
 
+varieties = (
+    df[variety_field].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique().tolist()
+    if variety_field in df.columns or variety_field == "__variety__" else []
+)
+varieties = sorted(set(varieties))
 
-# Variety filter (prefer actual column; fallback to parsed __variety__)
-if variety_field:
-    varieties = (
-        df[variety_field].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique().tolist()
-    )
-    varieties = sorted(varieties)
-    sel_varieties = st.sidebar.multiselect(
-        "Variety / Grape", options=varieties, default=varieties[: min(5, len(varieties))]
-    )
-else:
-    sel_varieties = []
-
-
-# Year range
-if df["__year__"].notna().any():
+year_has_any = df["__year__"].notna().any()
+if year_has_any:
     y_min = int(df["__year__"].min(skipna=True))
     y_max = int(df["__year__"].max(skipna=True))
-    yr = st.sidebar.slider("Year range", min_value=y_min, max_value=y_max, value=(y_min, y_max))
 else:
-    yr = None
+    y_min, y_max = 1900, 2025  # benign defaults
+
+# Top-row filter UI
+c1, c2, c3, c4 = st.columns([1.2, 1.2, 0.9, 0.9])
+with c1:
+    sel_regions = st.multiselect(
+        "Region / State",
+        options=regions,
+        default=regions[: min(8, len(regions))] if regions else []
+    )
+with c2:
+    sel_varieties = st.multiselect(
+        "Variety / Grape",
+        options=varieties,
+        default=varieties[: min(8, len(varieties))] if varieties else []
+    )
+with c3:
+    if color_col:
+        colors = (
+            df[color_col].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique().tolist()
+        )
+        colors = sorted(set(colors))
+        sel_colors = st.multiselect("Color", options=colors, default=colors[: min(3, len(colors))])
+    else:
+        sel_colors = []
+with c4:
+    if year_has_any:
+        yr = st.slider("Year range", min_value=y_min, max_value=y_max, value=(y_min, y_max))
+    else:
+        yr = None
 
 # Apply filters
 filt = pd.Series(True, index=df.index)
 
-if "__location_last__" in df.columns and sel_countries:
-    filt &= df["__location_last__"].astype(str).isin(sel_countries)
+if sel_regions and "__location_last__" in df.columns:
+    filt &= df["__location_last__"].astype(str).isin(sel_regions)
 
-
-if variety_field and sel_varieties:
+if sel_varieties and (variety_field in df.columns or variety_field == "__variety__"):
     filt &= df[variety_field].astype(str).isin(sel_varieties)
+
+if sel_colors and color_col:
+    filt &= df[color_col].astype(str).isin(sel_colors)
 
 if yr and df["__year__"].notna().any():
     filt &= df["__year__"].between(yr[0], yr[1], inclusive="both")
 
 df_f = df.loc[filt].copy()
 
-st.subheader("Key KPIs")
-col1, col2, col3, col4 = st.columns(4, gap="large")
-with col1:
+# ----------------------------
+# 4) KPIs
+# ----------------------------
+st.markdown("### Key KPIs")
+k1, k2, k3, k4 = st.columns(4)
+with k1:
     st.metric("Total Wines", f"{len(df_f):,}")
-with col2:
+with k2:
     if rating_col and df_f[rating_col].notna().any():
         st.metric("Avg Rating", f"{df_f[rating_col].mean():.2f}")
     else:
         st.metric("Avg Rating", "—")
-with col3:
+with k3:
     if price_col and df_f[price_col].notna().any():
         st.metric("Median Price", f"${df_f[price_col].median():,.2f}")
     else:
         st.metric("Median Price", "—")
-with col4:
-    # Prefer ABV if present; else show unique short locations
+with k4:
     if abv_col and df_f[abv_col].notna().any():
         st.metric("Avg ABV", f"{df_f[abv_col].mean():.1f}%")
     elif "__location_last__" in df_f.columns:
@@ -214,20 +226,21 @@ with col4:
     else:
         st.metric("Locations", "—")
 
-
 st.divider()
 
-# Charts (matplotlib for minimal deps)
-# 1) Top locations by number of wines (short label)
+# ----------------------------
+# 5) Charts (matplotlib)
+# ----------------------------
+
+# A) Top Locations
 st.subheader("Top Locations by Number of Wines")
 if "__location_last__" in df_f.columns:
     top_loc = (
-        df_f["__location_last__"].dropna()
-        .astype(str).str.strip().replace("", np.nan).dropna()
+        df_f["__location_last__"].dropna().astype(str).str.strip().replace("", np.nan).dropna()
         .value_counts().head(10).sort_values(ascending=True)
     )
     if not top_loc.empty:
-        fig = plt.figure(figsize=(8, 5))
+        fig = plt.figure(figsize=(8, 4.5))
         top_loc.plot(kind="barh")
         plt.xlabel("Count")
         plt.ylabel("Location")
@@ -238,13 +251,12 @@ if "__location_last__" in df_f.columns:
 else:
     st.info("Location field not available in dataset.")
 
-
-# 2) Average rating by year (line)
+# B) Average Rating by Year
 st.subheader("Average Rating by Year")
 if rating_col and df_f["__year__"].notna().any():
     grp = df_f.dropna(subset=["__year__"])[["__year__", rating_col]].groupby("__year__").mean()
     if not grp.empty:
-        fig2 = plt.figure(figsize=(8, 4))
+        fig2 = plt.figure(figsize=(8, 3.8))
         plt.plot(grp.index, grp[rating_col], marker="o")
         plt.xlabel("Year")
         plt.ylabel("Average Rating")
@@ -255,10 +267,10 @@ if rating_col and df_f["__year__"].notna().any():
 else:
     st.info("Year or rating not available to plot the trend.")
 
-# 3) Price distribution (histogram)
-st.subheader("Price Distribution")
+# C) Price Distribution
+st.subheader("Price Distribution (USD)")
 if price_col and df_f[price_col].notna().any():
-    fig3 = plt.figure(figsize=(8, 4))
+    fig3 = plt.figure(figsize=(8, 3.8))
     plt.hist(df_f[price_col].dropna(), bins=30)
     plt.xlabel("Price")
     plt.ylabel("Frequency")
@@ -267,17 +279,20 @@ if price_col and df_f[price_col].notna().any():
 else:
     st.info("Price data not available to plot a distribution.")
 
-# 4) Top grape/variety from parsed text
-# 4) Top grape/variety
+# D) Top Varieties
 st.subheader("Top Varieties")
-if variety_field:
+if variety_field and variety_field in df_f.columns:
+    series = df_f[variety_field]
+else:
+    series = df_f.get("__variety__", pd.Series([], dtype="object"))
+
+if not series.empty:
     top_var = (
-        df_f[variety_field].dropna()
-        .astype(str).str.strip().replace("", np.nan).dropna()
+        series.dropna().astype(str).str.strip().replace("", np.nan).dropna()
         .value_counts().head(10).sort_values(ascending=True)
     )
     if not top_var.empty:
-        fig4 = plt.figure(figsize=(8, 5))
+        fig4 = plt.figure(figsize=(8, 4.5))
         top_var.plot(kind="barh")
         plt.xlabel("Count")
         plt.ylabel("Variety")
@@ -288,7 +303,5 @@ if variety_field:
 else:
     st.info("Variety field not available.")
 
-
-
 st.divider()
-st.caption("Tip: refine filters in the sidebar. Keep it simple, sip the insights. 🥂")
+st.caption("Built for a 15-minute demo: top filters, KPIs, and three classic charts. Change filters above to explore.")
