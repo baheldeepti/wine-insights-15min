@@ -97,10 +97,7 @@ country_col  = map_column(df, ["Countrys", "country", "country_name", "region"])
 color_col    = map_column(df, ["color_wine", "color", "wine_color"])
 abv_col      = map_column(df, ["ABV %", "abv", "alcohol", "alcohol_percent"])
 name_col     = map_column(df, ["Names", "name", "title"])
-#variety_col  = map_column(df, ["Variety", "variety", "grape", "grapes", "wine_variety"])  # NEW
-
-# Unified field we’ll use throughout for variety/grape:
-variety_field = variety_col if variety_col else ("__variety__" if "__variety__" in df.columns else None)
+variety_col  = map_column(df, ["Variety", "variety", "grape", "grapes", "wine_variety"])  # NEW
 
 
 # Coerce numerics
