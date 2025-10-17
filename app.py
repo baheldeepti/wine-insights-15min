@@ -3,6 +3,8 @@ import pathlib
 import pandas as pd
 import numpy as np
 import streamlit as st
+import matplotlib.pyplot as plt
+
 
 # Optional: KaggleHub fallback
 def try_kagglehub_download():
@@ -95,6 +97,11 @@ country_col  = map_column(df, ["Countrys", "country", "country_name", "region"])
 color_col    = map_column(df, ["color_wine", "color", "wine_color"])
 abv_col      = map_column(df, ["ABV %", "abv", "alcohol", "alcohol_percent"])
 name_col     = map_column(df, ["Names", "name", "title"])
+variety_col  = map_column(df, ["Variety", "variety", "grape", "grapes", "wine_variety"])  # NEW
+
+# Unified field we’ll use throughout for variety/grape:
+variety_field = variety_col if variety_col else ("__variety__" if "__variety__" in df.columns else None)
+
 
 # Coerce numerics
 if price_col:
@@ -148,11 +155,10 @@ if country_col:
 else:
     sel_countries = []
 
-# Variety filter
-if variety_col:
+# Variety filter (prefer actual column; fallback to parsed __variety__)
+if variety_field:
     varieties = (
-        df[variety_col].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique()
-        .tolist()
+        df[variety_field].dropna().astype(str).str.strip().replace("", np.nan).dropna().unique().tolist()
     )
     varieties = sorted(varieties)
     sel_varieties = st.sidebar.multiselect(
@@ -160,6 +166,7 @@ if variety_col:
     )
 else:
     sel_varieties = []
+
 
 # Year range
 if df["__year__"].notna().any():
@@ -175,8 +182,8 @@ filt = pd.Series(True, index=df.index)
 if country_col and sel_countries:
     filt &= df[country_col].astype(str).isin(sel_countries)
 
-if variety_col and sel_varieties:
-    filt &= df[variety_col].astype(str).isin(sel_varieties)
+if variety_field and sel_varieties:
+    filt &= df[variety_field].astype(str).isin(sel_varieties)
 
 if yr and df["__year__"].notna().any():
     filt &= df["__year__"].between(yr[0], yr[1], inclusive="both")
@@ -260,10 +267,11 @@ else:
     st.info("Price data not available to plot a distribution.")
 
 # 4) Top grape/variety from parsed text
+# 4) Top grape/variety
 st.subheader("Top Varieties")
-if "__variety__" in df_f.columns:
+if variety_field:
     top_var = (
-        df_f["__variety__"].dropna()
+        df_f[variety_field].dropna()
         .astype(str).str.strip().replace("", np.nan).dropna()
         .value_counts().head(10).sort_values(ascending=True)
     )
@@ -278,6 +286,7 @@ if "__variety__" in df_f.columns:
         st.info("No variety data after filters.")
 else:
     st.info("Variety field not available.")
+
 
 
 st.divider()
