@@ -462,10 +462,10 @@ if "__location_last__" in df_filtered.columns:
         for i, v in enumerate(top_locations):
           ax.text(v + 1, i, str(v), va='center', fontsize=9)
           st.pyplot(fig_loc)
-    else:
-        st.info("No location data after filters.")
-else:
-    st.info("Location field not available in dataset.")
+   else:
+          st.info("No location data after filters.")
+ else:
+      st.info("Location field not available in dataset.")
 
 
 # B) Average Rating by Year
